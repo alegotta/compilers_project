@@ -1,20 +1,31 @@
 %{
-#include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 %}
 
 
 %union {
        char* lexeme;			//identifier
-       double value;			//value of an identifier of type NUM
+       int i_value;	     		//value of an identifier of type INT
+       double d_value;			//value of an identifier of type NUM
+       bool b_value;			//value of an identifier of type BOOLEAN
+       char c_value;    		//value of an identifier of type CHARACTER
+       char* s_value;			//value of an identifier of type STRING
        }
 
-%token <value>  NUM
-%token IF
+%token <i_value> INTEGER
+%token <d_value> NUM
+%token <b_value> BOOLEAN
+%token <c_value> CHARACTER
+%token <s_value> CHARARRAY
+
+%token INT FLOAT CHAR BOOL STRING IF ELSE WHILE FOR SWITCH CONTINUE BREAK PLUS MINUS MUL DIV AND OR NOT EQUAL GEQ SEQ GREATER SMALLER LPAREN RPAREN LBRACK RBRACK LBRACE RBRACE SEMI DOT COMMA ASSIGN
 %token <lexeme> ID
 
-%type <value> expr
+%type <i_value> expr
  /* %type <value> line */
 
 %left '-' '+'
