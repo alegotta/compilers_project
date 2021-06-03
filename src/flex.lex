@@ -37,10 +37,13 @@ COMMENT  \/\/.*\n
 "if"       { return IF; }
 "else"     { return ELSE; }
 "while"    { return WHILE; }
+"case"     { return CASE; }
 "for"      { return FOR; }
 "switch"   { return SWITCH; }
 "continue" { return CONTINUE; }
 "break"    { return BREAK; }
+"default"  { return DEFAULT; }
+"return"   { return RETURN; }
 
 "+"   { return PLUS; }
 "-"   { return MINUS; }
@@ -62,6 +65,7 @@ COMMENT  \/\/.*\n
 "{"   { return LBRACE; }
 "}"   { return RBRACE; }
 ";"   { return SEMI; }
+":"   { return COLON; }
 
 "."   { return DOT; }
 ","   { return COMMA; }
