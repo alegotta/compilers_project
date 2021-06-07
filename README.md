@@ -11,7 +11,7 @@ flex -l flex.lex
 #### Yacc
 
 ```bash
-yacc yacc.y -d -v
+yacc yacc.y -d -v -k
 ```
 
 ### Program compilation
