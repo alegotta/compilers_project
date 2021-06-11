@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include "sym_table.c"
 
 int number_line = 1;
 bool debug = true;
@@ -19,8 +20,9 @@ const char* token_name(int t);
 DIGIT     [0-9]
 INTEGER   {DIGIT}+
 NUM      {DIGIT}+(\.{DIGIT}+)?
-CHARACTER [ -~]
-CHARARRAY \"{CHARACTER}*\"
+ANY_CHARACTER [ -~]
+CHARACTER '{ANY_CHARACTER}'
+CHARARRAY \"{ANY_CHARACTER}*\"
 BOOLEAN   true|false
 
 LETTER   [a-zA-Z]
@@ -85,21 +87,22 @@ COMMENT  \/\/.*
               print_return(CHARACTER); }
 {BOOLEAN}   { (strcmp(yytext, "true") == 0) ? (yylval.b_value=true) : (yylval.b_value=false);
               print_return(BOOLEAN); }
-{ID}        {yylval.lexeme = strdup(yytext);
+{ID}        { yylval.lexeme = strdup(yytext);
+              enter(NULL, strdup(yytext), number_line);
               print_return(ID);}
 {CHARARRAY} { yylval.s_value = malloc(yyleng * sizeof(char));
               strcpy(yylval.s_value, yytext);  print_return(CHARARRAY); }
 
 [ \t\r\f]+  { /* skip blanks */ }
 \n          { number_line+=1; }
-.           { printf("On line %d: %s\n", number_line, yytext);
-              yyerror("unrecognized character"); }
+.           { printf("\nFATAL: Unrecognized character on line %d: %s\n", number_line, yytext);
+              exit(1); }
 
 %%
 
 void debug_print(const char* token) {
     if (debug==true) {
-        printf("Line %2d: token %s for text %s\n", number_line, token, yytext);
+        printf("FLEX: Line %2d: token %s for text %s\n", number_line, token, yytext);
     }
 }
 
