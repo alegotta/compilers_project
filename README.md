@@ -22,7 +22,18 @@ gcc y.tab.c -o program.out -ly
 
 ### Program execution
 
+#### Interactive
+
 ```bash
-chmod +x program.out
 ./program.out
 ```
+
+This will wait for some input, and will terminate as soon as `return <expression|/*empty*/>;` is typed.
+
+#### File Analysis
+
+```bash
+./program.out <path_to_file>
+```
+
+See the *src/examples* directory for some demonstration files.
