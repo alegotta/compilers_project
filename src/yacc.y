@@ -102,9 +102,9 @@ names:   names COMMA variable { $$ = add_variable_to_list($1, $3); }
 variable: ID { elem* el = lookup(NULL,$1); $$ = el; } ;
 
 /* Declaration of constants */
-constant:  /* INTEGER %prec MINUS { values* value = create_value(); value->i_value=-$1; $$ = value; }
-          | NUM %prec MINUS { values* value = create_value(); value->f_value=-$1; $$ = value; }
-          |*/ INTEGER { values* value = create_value(); value->i_value=$1; $$ = value; }
+constant:   MINUS INTEGER { values* value = create_value(); value->i_value=-$2; $$ = value; }
+          | MINUS NUM { values* value = create_value(); value->f_value=-$2; $$ = value; }
+          | INTEGER { values* value = create_value(); value->i_value=$1; $$ = value; }
           | NUM { values* value = create_value(); value->f_value=$1; $$ = value; }
           | CHARACTER { values* value = create_value(); value->c_value=$1; $$ = value; }
           | BOOLEAN { values* value = create_value(); value->b_value=$1; $$ = value; }
