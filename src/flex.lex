@@ -4,15 +4,16 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include "sym_table.c"
+#include "sym_table.h"
+#include "y.tab.h"
 
 int number_line = 1;
 bool debug = true;
+extern FILE *yyin;
 
 int yylex();
 void yyerror();
 void debug_print(const char* token);
-const char* print_return(int token);
 const char* token_name(int t);
 %}
 
@@ -35,63 +36,63 @@ COMMENT  \/\/.*
 
 {COMMENT}  { debug_print("COMMENTS"); }
 
-"int"      { print_return(INT); }
-"float"    { print_return(FLOAT); }
-"char"     { print_return(CHAR); }
-"bool"     { print_return(BOOL); }
-"string"   { print_return(STRING); }
+"int"      { return INT; }
+"float"    { return FLOAT; }
+"char"     { return CHAR; }
+"bool"     { return BOOL; }
+"string"   { return STRING; }
 
-"if"       { print_return(IF); }
-"else"     { print_return(ELSE); }
-"while"    { print_return(WHILE); }
-"case"     { print_return(CASE); }
-"for"      { print_return(FOR); }
-"switch"   { print_return(SWITCH); }
-"continue" { print_return(CONTINUE); }
-"break"    { print_return(BREAK); }
-"default"  { print_return(DEFAULT); }
-"return"   { print_return(RETURN); }
+"if"       { return IF; }
+"else"     { return ELSE; }
+"while"    { return WHILE; }
+"case"     { return CASE; }
+"for"      { return FOR; }
+"switch"   { return SWITCH; }
+"continue" { return CONTINUE; }
+"break"    { return BREAK; }
+"default"  { return DEFAULT; }
+"return"   { return RETURN; }
 
-"+"   { print_return(PLUS); }
-"-"   { print_return(MINUS); }
-"*"   { print_return(MUL); }
-"/"   { print_return(DIV); }
-"&&"  { print_return(AND);}
-"||"  { print_return(OR); }
-"!"   { print_return(NOT); }
-"=="  { print_return(EQUAL); }
-">="  { print_return(GEQ); }
-"<="  { print_return(SEQ); }
-">"   { print_return(GREATER); }
-"<"   { print_return(SMALLER); }
+"+"   { return PLUS; }
+"-"   { return MINUS; }
+"*"   { return MUL; }
+"/"   { return DIV; }
+"&&"  { return AND;}
+"||"  { return OR; }
+"!"   { return NOT; }
+"=="  { return EQUAL; }
+">="  { return GEQ; }
+"<="  { return SEQ; }
+">"   { return GREATER; }
+"<"   { return SMALLER; }
 
-"("   { print_return(LPAREN); }
-")"   { print_return(RPAREN); }
-"]"   { print_return(RBRACK); }
-"["   { print_return(LBRACK); }
-"{"   { print_return(LBRACE); }
-"}"   { print_return(RBRACE); }
-";"   { print_return(SEMICOLON); }
-":"   { print_return(COLON); }
+"("   { return LPAREN; }
+")"   { return RPAREN; }
+"]"   { return RBRACK; }
+"["   { return LBRACK; }
+"{"   { return LBRACE; }
+"}"   { return RBRACE; }
+";"   { return SEMICOLON; }
+":"   { return COLON; }
 
-"."   { print_return(DOT); }
-","   { print_return(COMMA); }
-"="   { print_return(ASSIGN); }
+"."   { return DOT; }
+","   { return COMMA; }
+"="   { return ASSIGN; }
 
 
 {INTEGER}   { yylval.i_value = atoi(yytext);
-              print_return(INTEGER); }
+              return INTEGER; }
 {NUM}       { yylval.d_value = atof(yytext);
-              print_return(NUM); }
-{CHARACTER} { yylval.c_value = yytext[0];
-              print_return(CHARACTER); }
+              return NUM; }
+{CHARACTER} { yylval.c_value = yytext[1];
+              return CHARACTER; }
 {BOOLEAN}   { (strcmp(yytext, "true") == 0) ? (yylval.b_value=true) : (yylval.b_value=false);
-              print_return(BOOLEAN); }
-{ID}        { yylval.lexeme = strdup(yytext);
-              enter(NULL, strdup(yytext), number_line);
-              print_return(ID);}
+              return BOOLEAN; }
+{ID}        { elem* el = enter(NULL, strdup(yytext), number_line);
+              yylval.lexeme = el->name;
+              return ID;}
 {CHARARRAY} { yylval.s_value = malloc(yyleng * sizeof(char));
-              strcpy(yylval.s_value, yytext);  print_return(CHARARRAY); }
+              strcpy(yylval.s_value, yytext);  return CHARARRAY; }
 
 [ \t\r\f]+  { /* skip blanks */ }
 \n          { number_line+=1; }
@@ -106,12 +107,18 @@ void debug_print(const char* token) {
     }
 }
 
-const char* print_return(int token) {
+int return_print (int token) {
     const char* token_str = token_name(token);
     debug_print(token_str);
-    return token_str;
+    printf("Returning %d", token);
+    return token;
 }
 
 const char* token_name(int t) {
-  return yytname[YYTRANSLATE(t)];
+  //return yytname[YYTRANSLATE(t)];
+  return "c";
 }
+
+void yyerror (char const *s) {
+   fprintf (stderr, "%s\n", s);
+ }

@@ -6,8 +6,11 @@
 #include <string.h>
 #include "sym_table.c"
 
-int yylex();
+extern FILE *yyin;
+extern int yylex();
 void yyerror();
+elem **add_variable(elem* variables[], elem* variable);
+values* create_value();
 
 %}
 
@@ -19,6 +22,9 @@ void yyerror();
        bool b_value;			//value of an identifier of type BOOLEAN
        char c_value;    		//value of an identifier of type CHARACTER
        char* s_value;			//value of an identifier of type STRING
+       values* value;
+       elem** variables;		//value of an identifier of type ELEM[]
+       elem* element;    		//value of an identifier of type ELEM
 }
 
 %token <i_value> INTEGER
@@ -29,6 +35,12 @@ void yyerror();
 
 %token INT FLOAT CHAR BOOL STRING IF ELSE WHILE CASE FOR SWITCH CONTINUE BREAK DEFAULT RETURN PLUS MINUS MUL DIV AND OR NOT EQUAL GEQ SEQ GREATER SMALLER LPAREN RPAREN LBRACK RBRACK LBRACE RBRACE SEMICOLON COLON DOT COMMA ASSIGN
 %token <lexeme> ID
+
+%type <s_value> type
+%type <variables> names
+%type <element> variable assignment
+%type <value> constant expression paren_expression
+
 
 /** Associativity Rules **/
 %left COMMA
@@ -51,40 +63,72 @@ void yyerror();
 
 /*** Syntax Rules ***/
 
-program: declarations statements ;
-
+program: declarations statements | declarations | statements | /* empty*/ ;
 
 
 /** Declaration of variables **/
-declarations: declarations declaration | declaration ;
-type: INT | CHAR | FLOAT | STRING | BOOL ;
-variable: ID ;
-declaration: { declaring=true; } type names SEMICOLON { declaring=false; } ;
-names: names COMMA variable | names COMMA init | variable | init ;
-init : ID ASSIGN constant ;
+declarations: declarations declaration | declaration {printf("dec1\n"); } ;
+type:  INT { $$ = "INT"; printf("INT\n"); }
+     | CHAR { $$ = "CHAR"; }
+     | FLOAT { $$ = "FLOAT"; }
+     | STRING { $$ = "STRING"; }
+     | BOOL { $$ = "BOOL"; } ;
+declaration: type names SEMICOLON
+             {
+                printf("DECLARATION\n");
+                elem** variables = $2;
+                int size = sizeof(variables)/sizeof(variables[0]);
+                printf("SizeD: %d\n", size);
+                for(int i=0; i<size;i++) {
+                    elem* variable = variables[i];
+                    printf("va: %s\n", variables[i]->name);
+                    char* data_type = (char*) $1;
+                    set_type(variable, data_type);
+                }
+             } ;
+names:   names COMMA variable { $$ = add_variable($1, $3); }
+       | names COMMA assignment { $$ = add_variable($1, $3); }
+       | variable { $$ = add_variable(NULL, $1); }
+       | assignment { $$ = add_variable(NULL, $1); }
+       ;
+
+variable: ID { elem* el = lookup(NULL,$1); printf("LOOK\n"); $$ = el; } ;
 
 /* Declaration of constants */
-constant: INTEGER | NUM | CHARACTER | BOOLEAN | CHARARRAY ;
-assignment: variable ASSIGN expression ;
+constant:  INTEGER { values* value = create_value(); value->i_value=$1; printf("VAL: %d %c \n",value->i_value, value->c_value); $$ = value; }
+          | NUM { values* value = create_value(); value->f_value=$1; $$ = value; }
+          | CHARACTER { values* value = create_value(); value->c_value=$1; $$ = value; }
+          | BOOLEAN { values* value = create_value(); value->b_value=$1; $$ = value; }
+          | CHARARRAY { values* value = create_value(); value->s_value=$1; $$ = value; }
+          ;
+
+assignment: variable ASSIGN constant
+       {
+         elem* item = $1;
+         values *val = $3;
+         item->value = val;
+         $$ = item;
+       } ;
 
 /* Arithmetical and Logical expressions */
 expression:
-    expression PLUS expression |
-    expression MINUS expression |
-    expression MUL expression |
-    expression DIV expression |
-    expression OR expression |
-    expression AND expression |
-    NOT expression |
-    expression EQUAL expression |
-    expression GEQ expression |
-    expression SEQ expression |
+    expression PLUS expression {get_result_type($1,$3,$2);}  |
+    expression MINUS expression   |
+    expression MUL expression     |
+    expression DIV expression     |
+    expression OR expression      |
+    expression AND expression     |
+    NOT expression { $$ = $2; }   |
+    expression EQUAL expression   |
+    expression GEQ expression     |
+    expression SEQ expression     |
     expression GREATER expression |
     expression SMALLER expression |
-    paren_expression |
-    variable | constant
-;
-paren_expression: LPAREN expression RPAREN ;
+    paren_expression              |
+    variable { $$ = $1->value;}   |
+    constant
+   ;
+paren_expression: LPAREN expression RPAREN { $$ = $2; } ;
 
 /** Control-Flow Statements **/
 statements: statements statement | statement ;
@@ -119,7 +163,34 @@ while_statement: WHILE paren_expression brace_statements ;
 
 
 %%
-#include "lex.yy.c"
+
+values* create_value() {
+    values* value = malloc(sizeof(values));
+    value->i_value = 0;
+    value->c_value = '0';
+    value->s_value = "0";
+    value->f_value = 0.0;
+    value->b_value = false;
+
+    return value;
+}
+
+elem **add_variable(elem** variables, elem* variable) {
+    int size = 0;
+    if (variables != NULL)
+        size = sizeof(variables)/sizeof(variables[0]);
+
+    printf("size: %d\n", size);
+    elem **new_array = realloc(variables, (size+1) * sizeof(elem));
+    for(int i=0;i<size;i++) {
+        new_array[i] = variables[i];
+    }
+    new_array[size] = variable;
+
+    printf("NAME: %s\n", new_array[0]->name);
+
+    return new_array;
+}
 
 void type_error(int first_type, int second_type, int operation_type) {
 	fprintf(stderr, "Type conflict between %d and %d using op type %d\n", first_type, second_type, operation_type);
@@ -196,6 +267,7 @@ int main(int argc, char *argv[]) {
         int parse_ret = yyparse();
         fclose(yyin);
         print_table(NULL);
+        printf("Return: %d\n", parse_ret);
         return parse_ret;
     } else {
         printf("Please type some input...\n");

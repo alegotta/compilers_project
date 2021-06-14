@@ -2,42 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include "sym_table.h"
 
-#ifndef SYMTABLE_H_
-#define SYMTABLE_H_
-
-//Struct describing possible data values of a node
-typedef struct values {
-    int i_value;
-    bool b_value;
-    char c_value;
-    float f_value;
-} values;
-
-//Struct defining the content of each node in the symbol table
-typedef struct elem {
-    char* name;         //Name of the variable
-    const char* type;   //Data type
-    int width;          //Size
-    int line_number;
-    values *value;
-    struct elem *next;  //Pointer to the next value, needed since this is a linked list
-} elem;
-
-//Struct defining the actual symbol table. It is a linked list with both head and tail pointers (to increase insertion efficiency)
-typedef struct sym_table {
-    char* name;
-    elem* head;
-    elem* tail;
-    struct sym_table* prev_table;   //Pointer to the upper symbol table, used in cases of nested blocks
-    int offset;
-} sym_table;
 
 //GLOBAL VARIABLES
 sym_table *global_table;
-bool declaring = false;
-
-
 
 //Generate a new table
 sym_table *mktable(char* name, sym_table* previous) {
@@ -59,16 +28,28 @@ void print_table(sym_table* table) {
     printf("\n-------------\nSymbol Table %s:\n-------------\nOffset: %d\n", table->name, table->offset);
     temp = table->head;
     while (temp != NULL) {
-        printf("Type: %2s    Width: %2d    Line: %2d    Symbol: %s\n", temp->type, temp->width, temp->line_number, temp->name);
+        printf("Type: %s \t Width: %d \t Line: %d \t Symbol: %s \t", temp->type, temp->width, temp->line_number, temp->name);
+
+        if (temp->value != NULL) {
+            if (strcmp(temp->type, "INT") == 0)
+                printf("Value: %d", temp->value->i_value);
+            else if (strcmp(temp->type, "CHAR") == 0)
+                printf("Value: %c", temp->value->c_value);
+            else if (strcmp(temp->type, "FLOAT") == 0)
+                printf("Value: %f", temp->value->f_value);
+            else if (strcmp(temp->type, "STRING") == 0)
+                printf("Value: %s", temp->value->s_value);
+        }
+        printf("\n");
         temp = temp->next;
     }
     printf("\n\n");
 }
 
 int get_size(const char* type) {
-    if (strcmp(type, "INTEGER") == 0)
+    if (strcmp(type, "INT") == 0)
         return sizeof(int);
-    else if (strcmp(type, "CHARACTER") == 0)
+    else if (strcmp(type, "CHAR") == 0)
             return sizeof(char);
     else if (strcmp(type, "FLOAT") == 0)
             return sizeof(float);
@@ -84,6 +65,9 @@ int get_size(const char* type) {
 
 //Given a variable name, return the corresponding 'elem' pointer, if it exists.
 elem *lookup(sym_table* table, char* name) {
+    if (table == NULL)
+        table = global_table;
+
     elem *temp = table->head;
 
     while (temp != NULL) {
@@ -100,7 +84,7 @@ elem *lookup(sym_table* table, char* name) {
 }
 
 //Add a new symbol to the table. Note that type and value will be added in a later moment
-void enter(sym_table* table, char* name, int line_number) {
+elem* enter(sym_table* table, char* name, int line_number) {
     sym_table* actual_table = table;
     if (table == NULL)  //Use the global table if not specifying differently
         actual_table = global_table;
@@ -109,8 +93,9 @@ void enter(sym_table* table, char* name, int line_number) {
         printf("SYM:  Symbol %s already present in table!\n", name);
     } else {
         printf("SYM:  Symbol %s is new, adding to table\n", name);
-        elem* new_elem = malloc(sizeof(elem));  //Allocate dynamic memory
+        elem* new_elem = malloc(sizeof(elem)*20);  //Allocate dynamic memory
         new_elem->name = name;
+        new_elem->value = NULL;
         new_elem->line_number = line_number;
         new_elem->next = NULL;
 
@@ -121,8 +106,16 @@ void enter(sym_table* table, char* name, int line_number) {
             actual_table->tail->next = new_elem;
             actual_table->tail = actual_table->tail->next;
         }
-        //actual_table->offset += get_size(type);
+        return new_elem;
     }
+}
+
+void set_type(elem* el, char* type) {
+    int width = get_size(type);
+
+    global_table->offset += width;     //TODO: Nested
+    el->type = type;
+    el->width = width;
 }
 
 void set_value(elem* el, void* val) {
@@ -168,6 +161,3 @@ void rmtable(sym_table* table) {
 void init_table() {
     global_table = mktable("Global", NULL);
 }
-
-
-#endif
