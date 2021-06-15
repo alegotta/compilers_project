@@ -1,20 +1,24 @@
 %{
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
-#include <stdarg.h>
 #include "sym_table.c"
+#include "type_checking.c"
 
+//Functions and variables defined in LEX
 extern FILE *yyin;
-bool debug = true;
 extern int yylex();
 extern int number_line;
+extern void yyerror(char* str, ...);
+
+bool debug = true;
+int names = 0;
 const char * const* token_table;
-void yyerror(char* str, ...);
+
 void print_debug(char* str, ...);
-elem **add_variable_to_list(elem* variables[], elem* variable);
+elem **add_variable_to_list(elem** variables, elem* variable, int size);
 values* create_value();
 elem* get_expression_result(elem* first, elem* second, int operation_type);
 %}
@@ -23,7 +27,7 @@ elem* get_expression_result(elem* first, elem* second, int operation_type);
 %union {
        char* lexeme;			//identifier
        int i_value;	     		//value of an identifier of type INT
-       double d_value;			//value of an identifier of type NUM
+       double d_value;			//value of an identifier of type REAL
        bool b_value;			//value of an identifier of type BOOLEAN
        char c_value;    		//value of an identifier of type CHARACTER
        char* s_value;			//value of an identifier of type STRING
@@ -33,19 +37,17 @@ elem* get_expression_result(elem* first, elem* second, int operation_type);
 }
 
 %token <i_value> INTEGER
-%token <d_value> NUM
+%token <d_value> REAL
 %token <b_value> BOOLEAN
 %token <c_value> CHARACTER
 %token <s_value> CHARARRAY
-
-%token INT FLOAT CHAR BOOL STRING IF ELSE WHILE CASE FOR SWITCH CONTINUE BREAK DEFAULT RETURN LPAREN RPAREN LBRACK RBRACK LBRACE RBRACE SEMICOLON COLON DOT COMMA ASSIGN
 %token <lexeme> ID
-%token <i_value> PLUS MINUS MUL DIV MOD AND OR NOT EQUAL GEQ SEQ GREATER SMALLER
+%token <i_value> PLUS MINUS MUL DIV MOD AND OR NOT EQUAL GEQ SEQ GREATER SMALLER ASSIGN
+%token INT FLOAT CHAR BOOL STRING IF ELSE WHILE CASE FOR SWITCH CONTINUE BREAK DEFAULT RETURN LPAREN RPAREN LBRACK RBRACK LBRACE RBRACE SEMICOLON COLON DOT COMMA
+
 %type <i_value> type
 %type <variables> names
-%type <element> variable assignment expression paren_expression
-%type <value> constant return
-
+%type <element> variable assignment expression paren_expression constant return
 
 /** Associativity Rules **/
 %left COMMA
@@ -68,54 +70,67 @@ elem* get_expression_result(elem* first, elem* second, int operation_type);
 
 /*** Syntax Rules ***/
 
-program: main return { printf("\nReturn: %d\n\nParsed Successfully!\n", $2->i_value); YYACCEPT; } | return { printf("\nReturn: %d\n\nParsed Successfully!\n", $1->i_value); YYACCEPT; } ;
-
-return: RETURN expression SEMICOLON { $$ = $2->value; } | RETURN SEMICOLON { elem* ret = enter_temp(NULL, number_line); ret->value=create_value(); ret->value->i_value = 0; $$ = ret->value; } ;
-
-main: declarations statements | statements | declarations ;
+program:   function_body return { printf("\n\nParsed Successfully! Return "); print_value($2); YYACCEPT; }
+         | return { printf("\n\nParsed Successfully! Return "); print_value($1); YYACCEPT; /*TODO: Print different data types*/ }
+         ;
+return:    RETURN expression SEMICOLON { $$ = $2; }
+         | RETURN SEMICOLON { elem* ret = enter_temp_with_value(NULL, number_line);    //Assign a return of 0
+                              ret->value->i_value = 0;
+                              $$ = ret;
+                            }
+         ;
+function_body: declarations statements | statements | declarations ;
 
 /** Declaration of variables **/
 declarations: declarations declaration | declaration ;
-type:  INT { $$ = INT_TYPE; }
-     | CHAR { $$ = CHAR_TYPE; }
-     | FLOAT { $$ = FLOAT_TYPE; }
-     | STRING { $$ = STRING_TYPE; }
-     | BOOL { $$ = BOOL_TYPE; } ;
 declaration: type names SEMICOLON
              {
                 elem** variables = $2;
-                int size = sizeof(variables)/sizeof(variables[0]);
 
-                for(int i=0; i<size;i++) {
+                for(int i=0; i<names;i++) {  //Set the data type for all variables in the names list
                     elem* variable = variables[i];
                     int data_type = $1;
-                    set_type(variable, data_type);
+
                     print_debug("declaration of %s %s", get_type_string(data_type), variables[i]->name);
+
+                    if (variable->type != UNKNOWN_TYPE)
+                        get_exp_result_type(data_type, variable->type, ASSIGN);     //An initializer is present: check that types are compatible
+                    set_type(variable, data_type);
                 }
              } ;
-names:   names COMMA variable { $$ = add_variable_to_list($1, $3); }
-       | names COMMA assignment { $$ = add_variable_to_list($1, $3); }
-       | variable { $$ = add_variable_to_list(NULL, $1); }
-       | assignment { $$ = add_variable_to_list(NULL, $1); }
+type:  INT    { $$ = INT_TYPE; }
+     | CHAR   { $$ = CHAR_TYPE; }
+     | FLOAT  { $$ = REAL_TYPE; }
+     | STRING { $$ = STRING_TYPE; }
+     | BOOL   { $$ = BOOL_TYPE; }
+     ;
+names:   names COMMA variable { $$ = add_variable_to_list($1, $3, ++names); }
+       | names COMMA assignment { $$ = add_variable_to_list($1, $3, ++names); }
+       | variable { $$ = add_variable_to_list(NULL, $1, 1); }
+       | assignment { $$ = add_variable_to_list(NULL, $1, 1); }
        ;
 
-variable: ID { elem* el = lookup(NULL,$1); $$ = el; } ;
+variable: ID { elem* el = lookup(NULL,$1); if (el == NULL) yyerror("Variable not declared!"); $$ = el; } ;
 
-/* Declaration of constants */
-constant:   MINUS INTEGER { values* value = create_value(); value->i_value=-$2; $$ = value; }
-          | MINUS NUM { values* value = create_value(); value->f_value=-$2; $$ = value; }
-          | INTEGER { values* value = create_value(); value->i_value=$1; $$ = value; }
-          | NUM { values* value = create_value(); value->f_value=$1; $$ = value; }
-          | CHARACTER { values* value = create_value(); value->c_value=$1; $$ = value; }
-          | BOOLEAN { values* value = create_value(); value->b_value=$1; $$ = value; }
-          | CHARARRAY { values* value = create_value(); value->s_value=$1; $$ = value; }
+constant:   MINUS INTEGER { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,INT_TYPE); temp->value->i_value=-$2; $$ = temp; }
+          | MINUS REAL { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,REAL_TYPE);  temp->value->f_value=-$2; $$ = temp; }
+          | INTEGER { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,INT_TYPE);  temp->value->i_value=$1; $$ = temp; }
+          | REAL { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,REAL_TYPE);  temp->value->f_value=$1; $$ = temp; }
+          | CHARACTER { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,CHAR_TYPE);  temp->value->c_value=$1; $$ = temp; }
+          | BOOLEAN { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,BOOL_TYPE);  temp->value->b_value=$1; $$ = temp; }
+          | CHARARRAY { elem* temp = enter_temp_with_value(NULL, number_line); set_type(temp,STRING_TYPE);  temp->value->s_value=$1; $$ = temp; }
           ;
 
 assignment: variable ASSIGN expression
        {
+         //Assign the expression value to the corresponding variable
          elem* item = $1;
          elem* exp = $3;
+         set_type(item, exp->type);    //The check between exp->type and item->type is done in the 'declaration' rule
          item->value = exp->value;
+
+         print_debug("Assigned value of temp variable %s to variable %s", exp->name, item->name);
+
          $$ = item;
        } ;
 
@@ -135,10 +150,10 @@ expression:
     expression GREATER expression { $$ = get_expression_result($1,$3,$2); } |
     expression SMALLER expression { $$ = get_expression_result($1,$3,$2); } |
     paren_expression              { $$=$1; }                                |
-    variable                      { $$=$1; }                                |
-    constant                      { elem* new_elem = enter_temp(NULL, number_line); new_elem->value=$1; $$=new_elem; }
+    variable                      { if ($1->value == NULL) yyerror("Variable %s not declared!", $1->name); } |
+    constant                      { $$=$1; }
    ;
-paren_expression: LPAREN expression RPAREN { $$ = $2; } ;
+paren_expression: LPAREN expression RPAREN { $$=$2; } ;
 
 /** Control-Flow Statements **/
 statements: statements statement | statement ;
@@ -175,213 +190,27 @@ while_statement: WHILE paren_expression brace_statements ;
 %%
 
 
-elem **add_variable_to_list(elem** variables, elem* variable) {
-    int size = 0;
-    if (variables != NULL)
-        size = sizeof(variables)/sizeof(variables[0]);
+//Given a list of variables, append a new variable to it.
+//This is used for the 'names' rule, for example in the case 'int i=0, j=2;'
+elem **add_variable_to_list(elem** variables, elem* variable, int size) {
+    if (size == 1)
+        names = 1;
 
-    elem **new_array = realloc(variables, (size+1) * sizeof(elem));
-    for(int i=0;i<size;i++) {
-        new_array[i] = variables[i];
-    }
-    new_array[size] = variable;
+    elem **new_array;
+    if (variables == NULL)
+        new_array = malloc(sizeof(elem));
+    else
+        new_array = realloc(variables, names*sizeof(elem));
+
+    new_array[names-1] = variable;
 
     return new_array;
-}
-
-void type_error(int first_type, int second_type, int operation_type) {
-	yyerror("Type conflict in %s %s %s\n", get_type_string(first_type), token_table[operation_type-255], get_type_string(second_type));
-}
-
-int get_exp_result_type(int first_type, int second_type, int operation_type) {
-    switch(operation_type) {
-        case ASSIGN:
-            if (first_type == second_type)
-                return 1;
-            else
-                type_error(first_type, second_type, operation_type);
-            break;
-
-        case PLUS:
-        case MINUS:
-        case MUL:
-        case DIV:
-            if (first_type==INT_TYPE && second_type==INT_TYPE)
-                return INT_TYPE;
-            else if ((first_type==INT_TYPE && second_type==FLOAT_TYPE) || (first_type==FLOAT_TYPE && second_type==INT_TYPE) || (first_type==FLOAT_TYPE && second_type==FLOAT_TYPE))
-                return FLOAT_TYPE;
-            else
-                type_error(first_type, second_type, operation_type);
-            break;
-        case MOD:
-            if (first_type==INT_TYPE && second_type==INT_TYPE)
-                return INT_TYPE;
-            else
-                type_error(first_type, second_type, operation_type);
-            break;
-
-        case AND:
-        case OR:
-            if (first_type==BOOL_TYPE && second_type==BOOL_TYPE)
-                return BOOL_TYPE;
-            else
-                type_error(first_type, second_type, operation_type);
-            break;
-        case NOT:
-            if (first_type==BOOL_TYPE)       // TODO: Handle !=
-                return BOOL_TYPE;
-            else
-                type_error(first_type, second_type, operation_type);
-            break;
-        case GEQ:
-        case SEQ:
-        case GREATER:
-        case SMALLER:
-        case EQUAL:
-            if (
-                (first_type==INT_TYPE && second_type==FLOAT_TYPE)   ||
-                (first_type==FLOAT_TYPE && second_type==INT_TYPE)   ||
-                (first_type==FLOAT_TYPE && second_type==FLOAT_TYPE) ||
-                (first_type==INT_TYPE && second_type==INT_TYPE)
-               )
-                return BOOL_TYPE;
-            else
-                type_error(first_type, second_type, operation_type);
-            break;
-        default:
-            yyerror("Operator %s not recognized", token_table[operation_type-255]);
-    }
-}
-
-elem* get_expression_result(elem* first, elem* second, int operation_type) {
-    elem* new_elem = enter_temp(NULL, number_line);
-    new_elem->value = create_value();
-    int type = get_exp_result_type(first->type, second->type, operation_type);
-    set_type(new_elem, type);
-
-    switch(operation_type) {
-        case PLUS:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->i_value = first->value->i_value + second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->i_value + second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->f_value = first->value->f_value + second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->f_value + second->value->f_value;
-            break;
-        case MINUS:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->i_value = first->value->i_value - second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->i_value - second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->f_value = first->value->f_value - second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->f_value - second->value->f_value;
-            break;
-
-        case MUL:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->i_value = first->value->i_value * second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->i_value * second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->f_value = first->value->f_value * second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->f_value * second->value->f_value;
-            break;
-
-        case DIV:
-            if ((second->value->i_value == 0) || (second->value->f_value) == 0)
-                yyerror("Division by 0 between %s and %s", first->name, second->name);
-
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->i_value = first->value->i_value / second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->i_value / second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->f_value = first->value->f_value / second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->f_value = first->value->f_value / second->value->f_value;
-            break;
-        case MOD:
-            if (second->value->i_value == 0)
-                yyerror("Division by 0 between %s and %s", first->name, second->name);
-
-            new_elem->value->i_value = first->value->i_value % second->value->i_value;
-            break;
-
-        case AND:
-            new_elem->value->b_value = first->value->b_value && second->value->b_value;
-            break;
-        case OR:
-            new_elem->value->b_value = first->value->b_value || second->value->b_value;
-            break;
-        case NOT:
-            new_elem->value->b_value = !first->value->b_value;
-            break;
-
-        case EQUAL:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->i_value == second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->i_value == second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->f_value == second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->f_value == second->value->f_value;
-            break;
-        case GEQ:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->i_value >= second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->i_value >= second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->f_value >= second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->f_value >= second->value->f_value;
-            break;
-        case SEQ:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->i_value <= second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->i_value <= second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->f_value <= second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->f_value <= second->value->f_value;
-            break;
-        case SMALLER:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->i_value < second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->i_value < second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->f_value < second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->f_value < second->value->f_value;
-            break;
-        case GREATER:
-            if (first->type==INT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->i_value > second->value->i_value;
-            else if (first->type==INT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->i_value > second->value->f_value;
-            else if(first->type==FLOAT_TYPE && second->type== INT_TYPE)
-                new_elem->value->b_value = first->value->f_value > second->value->i_value;
-            else // if (first->type==FLOAT_TYPE && second->type== FLOAT_TYPE)
-                new_elem->value->b_value = first->value->f_value > second->value->f_value;
-            break;
-        default:
-            yyerror("Operator %s not recognized", token_table[operation_type-255]);
-    }
-    return new_elem;
 }
 
 void print_debug(char* str, ...) {
     if (debug==true) {
         va_list varlist;
-        printf("YACC: ");
+        printf(" YACC: ");
         va_start (varlist, str);
         vprintf (str, varlist);
         va_end (varlist);
@@ -389,6 +218,7 @@ void print_debug(char* str, ...) {
     }
 }
 
+//Returns a stream to the file, if it exists, or to standard input
 FILE* get_input_stream(char* path) {
     FILE* stream;
 
@@ -401,7 +231,7 @@ FILE* get_input_stream(char* path) {
             exit(1);
         }
     } else {
-        printf("Please type some input, or 'return;' to terminate...\n");
+        printf("Please type some input, or 'return;' to terminate...\n\n");
         stream = stdin;
     }
     return stream;
@@ -411,13 +241,16 @@ int main(int argc, char *argv[]) {
     printf("--Formal Languages and Compilers--\n           Group Project\n\n");
 
     init_table();
-    token_table = yytname;
+    token_table = yytname;  //yytname is an internal yacc variable holding the token table. This assignment is needed to access it from LEX
 
     FILE* stream = get_input_stream(argv[1]);
-    yyin = stream;
+    yyin = stream;          //yyin is an internal yacc variable
 
     int parse_ret = yyparse();
     fclose(yyin);
+
+    printf("\n");
+
     print_table(NULL);
     remove_table(NULL);
 

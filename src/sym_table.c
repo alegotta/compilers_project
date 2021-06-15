@@ -4,10 +4,25 @@
 #include <stdbool.h>
 #include "sym_table.h"
 
+extern void yyerror(char* str, ...);
+extern bool debug;
 
 //GLOBAL VARIABLES
 sym_table *global_table;
 int temp_count = 1;
+
+void print_debug_sym(char* str, ...) {
+    if (debug == true) {
+        va_list varlist;
+        va_start (varlist, str);
+
+        printf(" SYM:  ");
+        vprintf (str, varlist);
+        printf("\n");
+
+        va_end (varlist);
+    }
+}
 
 sym_table* check_null(sym_table* table) {
     if (table == NULL)
@@ -20,7 +35,7 @@ char* get_type_string(int type) {
     switch(type) {
         case INT_TYPE:
             return "INT";
-        case FLOAT_TYPE:
+        case REAL_TYPE:
             return "FLOAT";
         case CHAR_TYPE:
             return "CHAR";
@@ -31,7 +46,7 @@ char* get_type_string(int type) {
         case BLOCK_TYPE:
             return "BLOCK";
         default:
-            return "Unknown";
+            yyerror("Unrecognized type\n");
     }
 }
 
@@ -47,6 +62,19 @@ sym_table *make_table(char* name, sym_table* previous) {
     return new_table;
 }
 
+void print_value(elem* elem) {
+    if (elem->type == INT_TYPE)
+        printf("Value: %d", elem->value->i_value);
+    else if (elem->type == CHAR_TYPE)
+        printf("Value: %c", elem->value->c_value);
+    else if (elem->type == REAL_TYPE)
+        printf("Value: %f", elem->value->f_value);
+    else if (elem->type == STRING_TYPE)
+        printf("Value: %s", elem->value->s_value);
+    else if (elem->type == BOOL_TYPE)
+        (elem->value->b_value==true) ? printf("Value: true") : printf("Value: false");
+}
+
 void print_table(sym_table* table) {
     table = check_null(table);
     elem* iterator;
@@ -54,22 +82,11 @@ void print_table(sym_table* table) {
     printf("\n-------------\nSymbol Table %s:\n-------------\nOffset: %d\n", table->name, table->offset);
     iterator = table->head;
     while (iterator != NULL) {
-        printf("Type: %s \t Symbol: %s \t Width: %d \t ", get_type_string(iterator->type), iterator->name, iterator->width);
+        printf("Type: %s \t Symbol: %s \t Width: %d \t Line: %d \t ", get_type_string(iterator->type), iterator->name, iterator->width, iterator->line_number);
 
-        if (iterator->line_number != -1)
-            printf("Line: %d \t ", iterator->line_number);
-        if (iterator->value != NULL) {
-            if (iterator->type == INT_TYPE)
-                printf("Value: %d", iterator->value->i_value);
-            else if (iterator->type == CHAR_TYPE)
-                printf("Value: %c", iterator->value->c_value);
-            else if (iterator->type == FLOAT_TYPE)
-                printf("Value: %f", iterator->value->f_value);
-            else if (iterator->type == STRING_TYPE)
-                printf("Value: %s", iterator->value->s_value);
-            else if (iterator->type == BOOL_TYPE)
-                printf("Value: %b", iterator->value->b_value);
-        }
+        if (iterator->value != NULL)
+            print_value(iterator);
+
         printf("\n");
         iterator = iterator->next;
     }
@@ -82,7 +99,7 @@ int get_size(int type) {
             return sizeof(int);
         case CHAR_TYPE:
             return sizeof(char);
-        case FLOAT_TYPE:
+        case REAL_TYPE:
             return sizeof(float);
         case STRING_TYPE:
             return 100;
@@ -91,9 +108,19 @@ int get_size(int type) {
         case BLOCK_TYPE:
             return 1;
         default:
-            printf("Unrecognized type\n");
-            exit(1);
+            yyerror("Unrecognized type\n");
     }
+}
+
+values* create_value() {
+    values* value = malloc(sizeof(values));
+    value->i_value = 0;
+    value->c_value = '0';
+    value->s_value = "0";
+    value->f_value = 0.0;
+    value->b_value = false;
+
+    return value;
 }
 
 //Given a variable name, return the corresponding 'elem' pointer, if it exists.
@@ -126,16 +153,23 @@ elem* enter_temp(sym_table* table, int line_number) {
     return enter(table, strdup(name), line_number);
 }
 
+elem* enter_temp_with_value(sym_table* table, int line_number) {
+    elem* new = enter_temp(table, line_number);
+    new->value = create_value();
+
+    return new;
+}
+
 //Add a new symbol to the table. Note that type and value will be added in a later moment
 elem* enter(sym_table* table, char* name, int line_number) {
     table = check_null(table);
 
     elem* el = lookup(table, name);
     if (el != NULL) {
-        printf("SYM:  Symbol '%s' already present in table!\n", name);
+        print_debug_sym("Symbol '%s' already present in table!", name);
         return el;
     } else {
-        printf("SYM:  Symbol '%s' is new, adding to table\n", name);
+        print_debug_sym("Symbol '%s' is new, adding to table", name);
         el = malloc(sizeof(elem));  //Allocate dynamic memory
         el->name = name;
         el->value = NULL;
@@ -159,17 +193,6 @@ void set_type(elem* el, int type) {
     global_table->offset += width;     //TODO: Nested
     el->type = type;
     el->width = width;
-}
-
-values* create_value() {
-    values* value = malloc(sizeof(values));
-    value->i_value = 0;
-    value->c_value = '0';
-    value->s_value = "0";
-    value->f_value = 0.0;
-    value->b_value = false;
-
-    return value;
 }
 
 //Entirely delete a table, called when the block is closed
