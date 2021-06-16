@@ -10,7 +10,7 @@
 
 int number_line = 1;
 extern bool debug;
-extern const char ** token_table;
+const char* get_token_name(int token);
 
 int yylex();
 void yyerror(char* str, ...);
@@ -24,82 +24,95 @@ void debug_token(int token);
 // COMMENTS recognizes a whole line starting with //
 %}
 
-DIGIT         [0-9]
-INTEGER       {DIGIT}+
-REAL          {DIGIT}+(\.{DIGIT}+)?
-ANY_CHARACTER [ -~]
-CHARACTER     '{ANY_CHARACTER}'
-CHARARRAY     \"{ANY_CHARACTER}*\"
-BOOLEAN       true|false
+DIGIT          [0-9]
+INT_LITERAL    {DIGIT}+
+REAL_LITERAL   {DIGIT}+(\.{DIGIT}+)?
+ANY_CHARACTER  [ -~]
+CHAR_LITERAL   '{ANY_CHARACTER}'
+STRING_LITERAL \"{ANY_CHARACTER}*\"
+BOOL_LITERAL   true|false
 
-LETTER        [a-zA-Z_]
-ID            {LETTER}({LETTER}|{DIGIT})*
+LETTER         [a-zA-Z_]
+ID             {LETTER}({LETTER}|{DIGIT})*
 
-COMMENTS      \/\/.*
+COMMENTS       \/\/.*
 
 
 %%
 
 {COMMENTS}  { debug_print("COMMENTS"); }
 
-"int"      { debug_token(INT); return INT; }
-"float"    { debug_token(FLOAT); return FLOAT; }
-"char"     { debug_token(CHAR); return CHAR; }
-"bool"     { debug_token(BOOL); return BOOL; }
-"string"   { debug_token(STRING); return STRING; }
+"int"      { yylval.identifier = INT_TYPE; debug_token(INT); return INT; }
+"float"    { yylval.identifier = REAL_TYPE; debug_token(FLOAT); return FLOAT; }
+"char"     { yylval.identifier = CHAR_TYPE; debug_token(CHAR); return CHAR; }
+"bool"     { yylval.identifier = BOOL_TYPE; debug_token(BOOL); return BOOL; }
+"string"   { yylval.identifier = STRING_TYPE; debug_token(STRING); return STRING; }
 
-"if"       { debug_token(IF); return IF; }
-"else"     { debug_token(ELSE); return ELSE; }
-"while"    { debug_token(WHILE); return WHILE; }
+"if"       { yylval.identifier = IF;  debug_token(IF); return IF; }
+"else"     { yylval.identifier = ELSE;  debug_token(ELSE); return ELSE; }
+"while"    { yylval.identifier = WHILE;  debug_token(WHILE); return WHILE; }
 "case"     { debug_token(CASE); return CASE; }
-"for"      { debug_token(FOR); return FOR; }
+"for"      { yylval.identifier = FOR;  debug_token(FOR); return FOR; }
 "switch"   { debug_token(SWITCH); return SWITCH; }
 "continue" { debug_token(CONTINUE); return CONTINUE; }
 "break"    { debug_token(BREAK); return BREAK; }
 "default"  { debug_token(DEFAULT); return DEFAULT; }
 "return"   { debug_token(RETURN); return RETURN; }
 
-"+"   { yylval.i_value = PLUS; debug_token(PLUS); return PLUS; }
-"-"   { yylval.i_value = MINUS; debug_token(MINUS); return MINUS; }
-"*"   { yylval.i_value = MUL;  debug_token(MUL); return MUL; }
-"/"   { yylval.i_value = DIV; debug_token(DIV); return DIV; }
-"%"   { yylval.i_value = MOD; debug_token(MOD); return MOD; }
-"&&"  { yylval.i_value = AND; debug_token(AND); return AND;}
-"||"  { yylval.i_value = OR; debug_token(OR); return OR; }
-"!"   { yylval.i_value = NOT; debug_token(NOT); return NOT; }
-"=="  { yylval.i_value = EQUAL; debug_token(EQUAL); return EQUAL; }
-">="  { yylval.i_value = GEQ; debug_token(GEQ); return GEQ; }
-"<="  { yylval.i_value = SEQ; debug_token(SEQ); return SEQ; }
-">"   { yylval.i_value = GREATER; debug_token(GREATER); return GREATER; }
-"<"   { yylval.i_value = SMALLER; debug_token(SMALLER); return SMALLER; }
+"+"   { yylval.identifier = PLUS; debug_token(PLUS); return PLUS; }
+"-"   { yylval.identifier = MINUS; debug_token(MINUS); return MINUS; }
+"*"   { yylval.identifier = MUL;  debug_token(MUL); return MUL; }
+"/"   { yylval.identifier = DIV; debug_token(DIV); return DIV; }
+"%"   { yylval.identifier = MOD; debug_token(MOD); return MOD; }
+"&&"  { yylval.identifier = AND; debug_token(AND); return AND;}
+"||"  { yylval.identifier = OR; debug_token(OR); return OR; }
+"!"   { yylval.identifier = NOT; debug_token(NOT); return NOT; }
+"=="  { yylval.identifier = EQUAL; debug_token(EQUAL); return EQUAL; }
+">="  { yylval.identifier = GEQ; debug_token(GEQ); return GEQ; }
+"<="  { yylval.identifier = SEQ; debug_token(SEQ); return SEQ; }
+">"   { yylval.identifier = GREATER; debug_token(GREATER); return GREATER; }
+"<"   { yylval.identifier = SMALLER; debug_token(SMALLER); return SMALLER; }
 
 "("   { debug_token(LPAREN); return LPAREN; }
 ")"   { debug_token(RPAREN); return RPAREN; }
-"]"   { debug_token(RBRACK); return RBRACK; }
-"["   { debug_token(LBRACK); return LBRACK; }
 "{"   { debug_token(LBRACE); return LBRACE; }
 "}"   { debug_token(RBRACE); return RBRACE; }
 ";"   { debug_token(SEMICOLON); return SEMICOLON; }
 ":"   { debug_token(COLON); return COLON; }
 
-"."   { debug_token(DOT); return DOT; }
 ","   { debug_token(COMMA); return COMMA; }
-"="   { yylval.i_value = ASSIGN; debug_token(ASSIGN); return ASSIGN; }
+"="   { yylval.identifier = ASSIGN; debug_token(ASSIGN); return ASSIGN; }
 
 
-{INTEGER}   { yylval.i_value = atoi(yytext);
-              debug_token(INTEGER); return INTEGER; }
-{REAL}      { yylval.d_value = atof(yytext);
-              debug_token(REAL); return REAL; }
-{CHARACTER} { yylval.c_value = yytext[1];   //Use index 1 because index 0 is the ' symbol
-              debug_token(ASSIGN); return CHARACTER; }
-{BOOLEAN}   { (strcmp(yytext, "true") == 0) ? (yylval.b_value=true) : (yylval.b_value=false);
-              debug_token(BOOLEAN); return BOOLEAN; }
-{ID}        { elem* el = enter(NULL, strdup(yytext), number_line);
-              yylval.lexeme = el->name;
-              debug_token(ID); return ID;}
-{CHARARRAY} { yylval.s_value = malloc(yyleng * sizeof(char));
-              strcpy(yylval.s_value, yytext);  debug_token(CHARARRAY); return CHARARRAY; }
+{INT_LITERAL}    {  yylval.element = insert_temp_element(number_line);
+                    set_element_type(yylval.element,INT_TYPE);
+                    yylval.element->value->i_value = atoi(yytext);
+                    debug_token(INT_LITERAL); return INT_LITERAL;
+                  }
+{REAL_LITERAL}    { yylval.element = insert_temp_element(number_line);
+                   set_element_type(yylval.element,REAL_TYPE);
+                   yylval.element->value->f_value = atof(yytext);
+                   debug_token(REAL_LITERAL); return REAL_LITERAL;
+                 }
+{CHAR_LITERAL}   { yylval.element = insert_temp_element(number_line);
+                   set_element_type(yylval.element,CHAR_TYPE);
+                   yylval.element->value->c_value = yytext[1];   //Use index 1 because index 0 is the ' symbol
+                   debug_token(CHAR_LITERAL); return CHAR_LITERAL;
+                 }
+{BOOL_LITERAL}   { yylval.element = insert_temp_element(number_line);
+                   set_element_type(yylval.element,BOOL_TYPE);
+                   (strcmp(yytext, "true") == 0) ? (yylval.element->value->b_value=true) : (yylval.element->value->b_value=false);
+                   debug_token(BOOL_LITERAL); return BOOL_LITERAL;
+                 }
+{ID}             { elem* el = create_element(strdup(yytext), number_line);
+                   yylval.element = el;
+                   debug_token(ID); return ID;
+                 }
+{STRING_LITERAL} { yylval.element = insert_temp_element(number_line);
+                   set_element_type(yylval.element,STRING_TYPE);
+                   yylval.element->value->s_value = malloc(yyleng * sizeof(char));
+                   strcpy(yylval.element->value->s_value, yytext);  debug_token(STRING_LITERAL); return STRING_LITERAL;
+                 }
 
 [ \t\r\f]+  { /* skip spaces */ }
 \n          { number_line+=1; }
@@ -114,12 +127,8 @@ void debug_print(const char* token) {
         printf(" FLEX: Line %2d: token %s for text %s\n", number_line, token, yytext);
 }
 
-const char* token_name(int t) {
-    return token_table[t-255];     // Return the textual representation of the token. token_table is automatically generated by YACC in the .h file
-}
-
 void debug_token (int token) {
-    const char* token_str = token_name(token);
+    const char* token_str = get_token_name(token);
     debug_print(token_str);
 }
 
@@ -133,5 +142,8 @@ void yyerror (char* str, ...) {
     fprintf(stderr, "\n");
 
     va_end (varlist);
+
+    print_table();
+
     exit(1);
 }

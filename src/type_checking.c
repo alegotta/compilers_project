@@ -2,14 +2,14 @@
 #include <stdlib.h>
 #include "y.tab.h"
 
-extern const char * const* token_table;
+const char* get_token_name(int token);
 extern int number_line;
 extern void print_debug(char* str, ...);
 extern void yyerror(char* str, ...);
 
 
 void type_error(int first_type, int second_type, int operation_type) {
-	yyerror("Type conflict in %s %s %s\n", get_type_string(first_type), token_table[operation_type-255], get_type_string(second_type));
+	yyerror("Type conflict in %s %s %s\n", get_type_string(first_type), get_token_name(operation_type), get_type_string(second_type));
 }
 
 //Returns the resulting type of the expression, or stops the compiler in cases of type conflicts
@@ -49,7 +49,7 @@ int get_exp_result_type(int first_type, int second_type, int operation_type) {
                 type_error(first_type, second_type, operation_type);
             break;
         case NOT:
-            if (first_type==BOOL_TYPE)       // TODO: Handle !=
+            if (first_type==BOOL_TYPE)
                 return BOOL_TYPE;
             else
                 type_error(first_type, second_type, operation_type);
@@ -62,7 +62,7 @@ int get_exp_result_type(int first_type, int second_type, int operation_type) {
             if (
                 (first_type==INT_TYPE && second_type==REAL_TYPE)   ||
                 (first_type==REAL_TYPE && second_type==INT_TYPE)   ||
-                (first_type==REAL_TYPE && second_type==REAL_TYPE) ||
+                (first_type==REAL_TYPE && second_type==REAL_TYPE)  ||
                 (first_type==INT_TYPE && second_type==INT_TYPE)
                )
                 return BOOL_TYPE;
@@ -70,19 +70,29 @@ int get_exp_result_type(int first_type, int second_type, int operation_type) {
                 type_error(first_type, second_type, operation_type);
             break;
         default:
-            yyerror("Operator %s not recognized", token_table[operation_type-255]);
+            yyerror("Operator %s not recognized", get_token_name(operation_type));
+    }
+}
+
+void check_statement_type(elem* variable, int statement) {
+    switch(statement) {
+        case IF:
+        case WHILE:
+        case FOR:
+            if (variable->type != BOOL_TYPE)
+                yyerror("Wrong type in %s condition for variable %s, expected BOOL", get_token_name(statement), variable->name);
     }
 }
 
 //Check that types are compatible, then return a new temporary value holding the expression result
 elem* get_expression_result(elem* first, elem* second, int operation_type) {
+    print_debug("Evaluating expression %s %s %s", first->name, get_token_name(operation_type), second->name);
+
     //Create the variable and assign the correct type to it
-    elem* new_elem = enter_temp(NULL, number_line);
+    elem* new_elem = insert_temp_element(number_line);
     new_elem->value = create_value();
     int type = get_exp_result_type(first->type, second->type, operation_type);
-    set_type(new_elem, type);
-
-    print_debug("Evaluating expression %s %s %s (result type %s)", first->name, token_table[operation_type-255], second->name, get_type_string(type));
+    set_element_type(new_elem, type);
 
     switch(operation_type) {
         case PLUS:
@@ -198,7 +208,7 @@ elem* get_expression_result(elem* first, elem* second, int operation_type) {
                 new_elem->value->b_value = first->value->f_value > second->value->f_value;
             break;
         default:
-            yyerror("Operator %s not recognized", token_table[operation_type-255]);
+            yyerror("Operator %s not recognized", get_token_name(operation_type));
     }
     return new_elem;
 }
