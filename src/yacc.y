@@ -4,14 +4,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
+#include "globals.h"
 #include "sym_table.c"
 #include "type_checking.c"
-
-//Functions and variables defined in LEX
-extern FILE *yyin;
-extern int yylex();
-extern int number_line;
-extern void yyerror(char* str, ...);
 
 //Useful global variables
 bool verbose = false;
@@ -55,7 +50,7 @@ void resolve_console_params(int argc, char *argv[]);
 %left LPAREN RPAREN
 
 /* Specification of the initial rule */
-%start program
+%start start
 
 
 %%
@@ -63,7 +58,7 @@ void resolve_console_params(int argc, char *argv[]);
 
 /*** Syntax Rules ***/
 
-program:  function_body return {
+start:  function_body return {
     print_verbose("Final table:");
     print_table();
     printf("\nParsed Successfully! Return ");
@@ -73,13 +68,14 @@ program:  function_body return {
 
 return:    RETURN expression SEMICOLON { $$ = $2; }
          | RETURN SEMICOLON            { $$ = create_element("return", number_line); }
+         | /* empty */                 { yyerror("Missing return statement!");       }
          ;
 function_body: declarations statements | statements | declarations | /* empty */;
 
 
 /** Declaration of variables **/
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-declarations: declarations declaration | declaration ;  //Allow one or more declarations
+declarations: declarations declaration | declaration ;               //Allow one or more declarations
 declaration: type variables_list SEMICOLON {
     elem** variables = $2;
 
@@ -192,9 +188,9 @@ while_statement: WHILE paren_expression brace_statements { print_verbose("While 
 
 
 switch_statement: SWITCH LPAREN variable RPAREN LBRACE cases default RBRACE ;
-cases: cases case | case ;
+cases: cases case | case { print_verbose("Switch-Case statement recognized"); } ;
 case: CASE constant COLON statements BREAK SEMICOLON ;
-default : DEFAULT COLON statements SEMICOLON | /* empty */ ;
+default : DEFAULT COLON statements { print_verbose("Switch-Default statement recognized"); } | /* empty */ ;
 
 
 assignment: variable ASSIGN expression {

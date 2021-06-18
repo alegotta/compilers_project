@@ -5,12 +5,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
+#include "globals.h"
 #include "sym_table.h"
 #include "y.tab.h"
-
-//Declared in YACC
-extern bool verbose;
-extern const char* get_token_name(int token);
 
 //Line counter, for verbose reasons
 int number_line = 1;
